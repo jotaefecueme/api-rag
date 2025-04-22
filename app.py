@@ -1,5 +1,3 @@
-# api_query.py
-
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import List
