@@ -1,18 +1,20 @@
-from fastapi import FastAPI, Request
+import os
+import time
+from fastapi import FastAPI, Query
 from pydantic import BaseModel
 from typing import List
 from langchain_cohere import CohereEmbeddings
 from langchain_chroma import Chroma
 from langchain.chat_models import init_chat_model
 from langchain_core.documents import Document
-import time
-import os
+from langchain.chains import RetrievalQA
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = FastAPI()
 
+# Configuración de Cohere y Chroma
 embeddings = CohereEmbeddings(
     model="embed-multilingual-v3.0",
     cohere_api_key=os.getenv("COHERE_API_KEY"),
@@ -47,12 +49,21 @@ class QueryRequest(BaseModel):
 def query(request: QueryRequest):
     start_time = time.time()
 
-    docs: List[Document] = vector_store.similarity_search(request.question, k=request.k)
+    retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": request.k})
+    docs: List[Document] = retriever.retrieve(request.question)
 
     context = "\n\n".join(d.page_content for d in docs)
+
     prompt = SYSTEM_PROMPT.format(question=request.question, context=context)
 
     response = llm.invoke(prompt).content
 
     elapsed = round(time.time() - start_time, 3)
-    return {"answer": response, "time": elapsed}
+
+    response_data = {
+        "answer": response,
+        "time": elapsed,
+        "fragments": [{"id": i, "content": doc.page_content} for i, doc in enumerate(docs, 1)]  # Incluye fragmentos
+    }
+
+    return response_data
