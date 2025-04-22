@@ -5,3 +5,4 @@ langchain
 langchain-chroma
 langchain-cohere
 langchain-core
+langchain-groq
