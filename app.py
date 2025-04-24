@@ -16,7 +16,6 @@ load_dotenv()
 
 app = FastAPI()
 
-# 1) Configurar embeddings y vector store
 embeddings = CohereEmbeddings(
     model="embed-multilingual-v3.0",
     cohere_api_key=os.getenv("COHERE_API_KEY"),
@@ -28,38 +27,34 @@ vector_store = Chroma(
     persist_directory="./chroma_langchain_db",
 )
 
-# 2) Inicializar el modelo LLM
 llm = init_chat_model(
     "meta-llama/llama-4-scout-17b-16e-instruct",
     model_provider="groq"
 )
 
-# 3) Prompt base
 SYSTEM_PROMPT = (
-    "Eres un asistente especializado en responder preguntas utilizando únicamente información proporcionada "
-    "en la documentación recuperada. Sé claro, preciso y directo.\n"
-    "- No inventes ni especules.\n"
-    "- Resume sin perder precisión.\n"
-    "- Máximo 3 frases.\n\n"
-    "Pregunta: {question}\nDocumentación: {context}\nRespuesta:"
+    "Eres un asistente que responde preguntas únicamente con la información incluida en el contexto proporcionado. "
+    "Tu respuesta debe ser clara, concisa y basada estrictamente en ese contexto.\n\n"
+    "INSTRUCCIONES ESTRICTAS:\n"
+    "- Prohíbido mencionar 'documentación', 'texto', 'según...', 'no se indica', 'no se especifica'.\n"
+    "- No especules, no completes lagunas.\n"
+    "- Máximo 30 palabras. Sé directo.\n"
+    "- No uses frases genéricas ni fórmulas vacías. Responde como si fueras un experto humano.\n\n"
+    "Pregunta: {question}\nContexto: {context}\nRespuesta:"
 )
 
-# 4) Modelo de la petición
 class QueryRequest(BaseModel):
     question: str
     k: int = 5
-
 
 @app.post("/query")
 def query(request: QueryRequest):
     start_time = time.time()
 
-    # 5) Recuperar fragmentos más relevantes
     docs: List[Document] = vector_store.similarity_search(
         request.question, k=request.k
     )
 
-    # 6) Construir el contexto para el prompt
     context = "\n\n".join(doc.page_content for doc in docs)
     prompt = SYSTEM_PROMPT.format(question=request.question, context=context)
 
