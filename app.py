@@ -33,14 +33,17 @@ llm = init_chat_model(
 )
 
 SYSTEM_PROMPT = (
-    "Eres un asistente que responde preguntas únicamente con la información incluida en el contexto proporcionado. "
-    "Tu respuesta debe ser clara, concisa y basada estrictamente en ese contexto.\n\n"
-    "INSTRUCCIONES ESTRICTAS:\n"
-    "- Prohíbido mencionar 'documentación', 'texto', 'según...', 'no se indica', 'no se especifica'.\n"
-    "- No especules, no completes lagunas.\n"
-    "- Máximo 30 palabras. Sé directo.\n"
-    "- No uses frases genéricas ni fórmulas vacías. Responde como si fueras un experto humano.\n\n"
-    "Pregunta: {question}\nContexto: {context}\nRespuesta:"
+    "Eres un asistente que responde preguntas exclusivamente con la información proporcionada.\n"
+    "Tu respuesta debe ser clara, concisa (máx. 30 palabras) y ceñida estrictamente a ese contexto.\n\n"
+    "INSTRUCCIONES OBLIGATORIAS:\n"
+    "- Bajo ningún concepto menciones la fuente, el contexto ni palabras como “documentación”, “texto”, “según…”.\n"
+    "- No especules ni rellenes lagunas.\n"
+    "- No uses frases genéricas ni fórmulas de cortesía.\n"
+    "- Si no hay datos para responder, responde EXACTAMENTE:\n"
+    "  “No hay información disponible para responder a esta pregunta.”\n\n"
+    "Pregunta: {question}\n"
+    "Contexto: {context}\n"
+    "Respuesta:"
 )
 
 class QueryRequest(BaseModel):
