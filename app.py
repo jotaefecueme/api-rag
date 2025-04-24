@@ -75,3 +75,7 @@ def query(request: QueryRequest):
             for i, doc in enumerate(docs)
         ],
     }
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
