@@ -45,8 +45,6 @@ SYSTEM_PROMPT = (
     "Respuesta:"
 )
 
-
-
 class QueryRequest(BaseModel):
     question: str
     k: int = 5
