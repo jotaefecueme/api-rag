@@ -1,25 +1,23 @@
-# api_query.py
-
 import os
 import time
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
-from langchain_core.documents import Document
 from langchain.chat_models import init_chat_model
+from langchain_core.documents import Document
 
 load_dotenv()
 
 app = FastAPI()
 
 embeddings = HuggingFaceEmbeddings(
-    model_name="intfloat/multilingual-e5-large",
+    model_name="sentence-transformers/all-MiniLM-l6-v2",  # Modelo de Hugging Face
     model_kwargs={"device": "cpu"},
-    encode_kwargs={"normalize_embeddings": True}
+    encode_kwargs={"normalize_embeddings": False}
 )
 
 vector_store = Chroma(
@@ -28,12 +26,11 @@ vector_store = Chroma(
     persist_directory="./chroma_langchain_db",
 )
 
-llm: ChatModel = init_chat_model(
+llm = init_chat_model(
     "meta-llama/llama-4-scout-17b-16e-instruct",
     model_provider="groq"
 )
 
-# Prompt del sistema
 SYSTEM_PROMPT = (
     "Eres un asistente experto en responder preguntas usando solo la información proporcionada.\n"
     "Tu misión es maximizar la utilidad al usuario, sin desviarte jamás del contexto.\n\n"
@@ -62,27 +59,19 @@ class QueryRequest(BaseModel):
 def query(request: QueryRequest):
     start_time = time.time()
 
-    docs: List[Document] = vector_store.similarity_search(request.question, k=request.k)
-
-    if not docs:
-        return {
-            "answer": "No hay información disponible para responder a esta pregunta.",
-            "time": round(time.time() - start_time, 3),
-            "fragments": [],
-        }
+    docs: List[Document] = vector_store.similarity_search(
+        request.question, k=request.k
+    )
 
     context = "\n\n".join(doc.page_content for doc in docs)
     prompt = SYSTEM_PROMPT.format(question=request.question, context=context)
 
-    try:
-        response = llm.invoke(prompt).content
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al invocar el modelo: {e}")
+    response = llm.invoke(prompt).content
 
     elapsed = round(time.time() - start_time, 3)
 
     return {
-        "answer": response.strip(),
+        "answer": response,
         "time": elapsed,
         "fragments": [
             {"id": i + 1, "content": doc.page_content}
