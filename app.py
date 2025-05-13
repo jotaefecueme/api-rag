@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
 
-from langchain_cohere import CohereEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain.chat_models import init_chat_model
 from langchain_core.documents import Document
@@ -16,11 +16,12 @@ load_dotenv()
 
 app = FastAPI()
 
-embeddings = CohereEmbeddings(
-    model="embed-multilingual-v3.0",
-    cohere_api_key=os.getenv("COHERE_API_KEY"),
-    user_agent="lekta-rag/0.1"
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    model_kwargs={"device": "cpu"}, 
+    encode_kwargs={"normalize_embeddings": True}
 )
+
 vector_store = Chroma(
     collection_name="example_collection",
     embedding_function=embeddings,
