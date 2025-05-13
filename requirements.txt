@@ -2,7 +2,8 @@ fastapi
 uvicorn
 python-dotenv
 langchain
+langchain-community
 langchain-chroma
-langchain-cohere
 langchain-core
 langchain-groq
+sentence-transformers
