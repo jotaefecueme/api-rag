@@ -6,7 +6,7 @@ from typing import List
 from dotenv import load_dotenv
 
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import Chroma
 from langchain.chat_models import init_chat_model
 from langchain_core.documents import Document
 
