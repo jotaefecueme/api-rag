@@ -23,7 +23,7 @@ logger = logging.getLogger("app")
 app = FastAPI()
 
 embeddings = HuggingFaceEmbeddings(
-    model_name=os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-large"),
+    model_name=os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small"),
     model_kwargs={"device": os.getenv("DEVICE", "cpu")},
     encode_kwargs={"normalize_embeddings": False}
 )
