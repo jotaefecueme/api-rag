@@ -5,8 +5,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, validator
 from typing import List
 from dotenv import load_dotenv
-
-# IMPORTACTUALIZADO: usar langchain_chroma en lugar de langchain_community.vectorstores.Chroma
+import uvicorn
 try:
     from langchain_chroma import Chroma
 except ImportError:
@@ -18,27 +17,23 @@ from langchain_core.documents import Document
 
 load_dotenv()
 
-# Configurar logging básico
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app")
 
 app = FastAPI()
 
-# Embeddings en español - cambiar a "cuda" si hay GPU disponible
 embeddings = HuggingFaceEmbeddings(
     model_name=os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-large"),
     model_kwargs={"device": os.getenv("DEVICE", "cpu")},
     encode_kwargs={"normalize_embeddings": False}
 )
 
-# Inicializar base vectorial Chroma
 vector_store = Chroma(
     collection_name=os.getenv("CHROMA_COLLECTION", "example_collection"),
     embedding_function=embeddings,
     persist_directory=os.getenv("CHROMA_DIR", "./chroma_langchain_db"),
 )
 
-# Inicializar LLM
 llm = init_chat_model(
     os.getenv("LLM_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"),
     model_provider=os.getenv("MODEL_PROVIDER", "groq"),
@@ -83,7 +78,6 @@ def truncate_context(context: str, max_chars: int = 3000) -> str:
 @app.post("/query")
 async def query(request: QueryRequest):
     start_time = time.time()
-    # FIX F-STRING: formatear correctamente con variables
     logger.info(f"Consulta recibida: '{request.question}' (k={request.k})")
 
     try:
@@ -119,3 +113,6 @@ async def query(request: QueryRequest):
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
