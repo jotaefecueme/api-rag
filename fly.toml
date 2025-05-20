@@ -1,7 +1,24 @@
-app = 'api-rag'
-primary_region = 'mad'
+app = "api-rag"
+primary_region = "mad"
 
 [build]
+
+[[services]]
+  internal_port = 8000
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+[[vm]]
+  memory_mb = 2048
+  cpu_kind = "shared"
+  cpus = 1
+
+[experimental]
+  kill_signal = "SIGINT"
+  kill_timeout = "5s"
 
 [http_service]
   internal_port = 8000
@@ -9,20 +26,4 @@ primary_region = 'mad'
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
-  processes = ['app']
-
-[[vm]]
-  memory_mb = 2048
-  cpu_kind = 'shared'
-  cpus = 1
-
-[[services]]
-  internal_port = 8000
-  protocol = "tcp"
-
-  [[services.ports]]
-    port = 8000
-
-[experimental]
-  kill_signal = "SIGINT"
-  kill_timeout = "5s"
+  processes = ["app"]
