@@ -1,25 +1,24 @@
 import os
 import time
 import logging
+import asyncio
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, validator
 from typing import List
 from dotenv import load_dotenv
-import uvicorn
+
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 try:
     from langchain_chroma import Chroma
 except ImportError:
     from langchain_community.vectorstores import Chroma
-
-from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain.chat_models import init_chat_model
 from langchain_core.documents import Document
 
 load_dotenv()
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app")
-
 app = FastAPI()
 
 embeddings = HuggingFaceEmbeddings(
@@ -27,16 +26,17 @@ embeddings = HuggingFaceEmbeddings(
     model_kwargs={"device": os.getenv("DEVICE", "cpu")},
     encode_kwargs={"normalize_embeddings": False}
 )
-
 vector_store = Chroma(
     collection_name=os.getenv("CHROMA_COLLECTION", "example_collection"),
     embedding_function=embeddings,
     persist_directory=os.getenv("CHROMA_DIR", "./chroma_langchain_db"),
 )
 
+tem = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 llm = init_chat_model(
     os.getenv("LLM_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"),
     model_provider=os.getenv("MODEL_PROVIDER", "groq"),
+    temperature=tem
 )
 
 SYSTEM_PROMPT = (
@@ -81,32 +81,35 @@ async def query(request: QueryRequest):
     logger.info(f"Consulta recibida: '{request.question}' (k={request.k})")
 
     try:
-        docs: List[Document] = vector_store.similarity_search(request.question, k=request.k)
+        docs = await asyncio.to_thread(vector_store.similarity_search, request.question, request.k)
     except Exception:
         logger.exception("Error en búsqueda vectorial")
         raise HTTPException(status_code=500, detail="Error interno en vector search")
 
     if not docs:
-        elapsed = round(time.time() - start_time, 3)
-        logger.info(f"Sin resultados. Tiempo de respuesta: {elapsed}s")
-        return {"answer": "No hay información disponible para responder a esta pregunta.", "time": elapsed, "fragments": []}
+        elapsed = time.time() - start_time
+        logger.info(f"Sin resultados. Tiempo de respuesta: {elapsed:.3f}s")
+        return {"answer": "No hay información disponible para responder a esta pregunta.",
+                "time": round(elapsed, 3),
+                "fragments": []}
 
     context = "\n\n".join(doc.page_content for doc in docs)
     context = truncate_context(context)
     prompt = SYSTEM_PROMPT.format(question=request.question, context=context)
 
     try:
-        response = llm.invoke(prompt).content.strip()
+        llm_response = await asyncio.to_thread(lambda: llm.invoke(prompt))
+        answer = llm_response.content.strip()
     except Exception:
         logger.exception("Error al invocar el LLM")
         raise HTTPException(status_code=500, detail="Error interno en generación de respuesta")
 
-    elapsed = round(time.time() - start_time, 3)
-    logger.info(f"Respuesta generada en {elapsed}s")
+    elapsed = time.time() - start_time
+    logger.info(f"Respuesta generada en {elapsed:.3f}s")
 
     return {
-        "answer": response,
-        "time": elapsed,
+        "answer": answer,
+        "time": round(elapsed, 3),
         "fragments": [{"id": i+1, "content": doc.page_content} for i, doc in enumerate(docs)]
     }
 
