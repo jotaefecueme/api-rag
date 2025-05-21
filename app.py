@@ -3,7 +3,8 @@ import time
 import logging
 import asyncio
 import uvicorn
-from fastapi import FastAPI, HTTPException
+import psutil  
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, validator
 from typing import List
 from dotenv import load_dotenv
@@ -75,9 +76,10 @@ def truncate_context(context: str, max_chars: int = 3000) -> str:
     """Limita el contexto a un tamaño máximo para el prompt."""
     return context if len(context) <= max_chars else context[:max_chars] + "..."
 
+
 @app.post("/query")
 async def query(request: QueryRequest):
-    start_time = time.time()
+    request_start = time.time()
     logger.info(f"Consulta recibida: '{request.question}' (k={request.k})")
 
     try:
@@ -87,35 +89,43 @@ async def query(request: QueryRequest):
         raise HTTPException(status_code=500, detail="Error interno en vector search")
 
     if not docs:
-        elapsed = time.time() - start_time
+        elapsed = time.time() - request_start
         logger.info(f"Sin resultados. Tiempo de respuesta: {elapsed:.3f}s")
-        return {"answer": "No hay información disponible para responder a esta pregunta.",
-                "time": round(elapsed, 3),
-                "fragments": []}
+        return {
+            "answer": "No hay información disponible para responder a esta pregunta.",
+            "time": round(elapsed, 3),
+            "fragments": []
+        }
 
     context = "\n\n".join(doc.page_content for doc in docs)
     context = truncate_context(context)
     prompt = SYSTEM_PROMPT.format(question=request.question, context=context)
 
     try:
+        inference_start = time.time()
         llm_response = await asyncio.to_thread(lambda: llm.invoke(prompt))
+        inference_time = time.time() - inference_start
+        process = psutil.Process(os.getpid())
+        memory_usage = process.memory_info().rss / 1024**2
+        logger.info(f"Inference time: {inference_time:.3f}s | Memory usage: {memory_usage:.2f} MB")
         answer = llm_response.content.strip()
     except Exception:
         logger.exception("Error al invocar el LLM")
         raise HTTPException(status_code=500, detail="Error interno en generación de respuesta")
 
-    elapsed = time.time() - start_time
-    logger.info(f"Respuesta generada en {elapsed:.3f}s")
+    total_time = time.time() - request_start
+    logger.info(f"POST /query - {total_time:.3f}s")
 
     return {
         "answer": answer,
-        "time": round(elapsed, 3),
+        "time": round(total_time, 3),
         "fragments": [{"id": i+1, "content": doc.page_content} for i, doc in enumerate(docs)]
     }
 
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
+    logger.info("GET /health - 0.001s")  
     return {"status": "ok"}
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000)
+    uv
