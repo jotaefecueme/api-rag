@@ -3,19 +3,14 @@ import time
 import logging
 import asyncio
 import uvicorn
-import psutil  
+import psutil
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field, validator
-from typing import List
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
-try:
-    from langchain_chroma import Chroma
-except ImportError:
-    from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain.chat_models import init_chat_model
-from langchain_core.documents import Document
+from pydantic import field_validator
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -40,7 +35,7 @@ llm = init_chat_model(
     temperature=tem
 )
 
-SYSTEM_PROMPT = (
+SYSTEM_PROMPT_RAG_SALUD = (
     "Eres un asistente experto en responder preguntas usando solo la información proporcionada.\n"
     "Tu misión es maximizar la utilidad al usuario, sin desviarte jamás del contexto.\n\n"
     "OBJETIVOS:\n"
@@ -60,11 +55,21 @@ SYSTEM_PROMPT = (
     "Respuesta:"
 )
 
+SYSTEM_PROMPT_CONSTRUCCION = (
+    "Eres un asistente que reconoce la pregunta del usuario y responde SIEMPRE con el siguiente mensaje, "
+    "mostrando que ha entendido la consulta pero dejando claro que la funcionalidad está en construcción.\n"
+    "Ejemplo de respuesta: \"Disculpas, funcionalidad la funcionalidad sobre <tema> está actualmente en construcción.\"\n"
+    "Pregunta: {question}\n"
+    "Respuesta:"
+)
+
 class QueryRequest(BaseModel):
+    id: str = Field(..., description="ID para identificar la consulta")
     question: str = Field(..., min_length=3, max_length=300, description="Texto de la pregunta")
     k: int = Field(5, ge=1, le=10, description="Número de fragmentos a recuperar")
 
-    @validator("question")
+    @field_validator("question")
+    @classmethod
     def validate_question(cls, v):
         text = v.strip()
         if not text:
@@ -73,33 +78,41 @@ class QueryRequest(BaseModel):
 
 
 def truncate_context(context: str, max_chars: int = 3000) -> str:
-    """Limita el contexto a un tamaño máximo para el prompt."""
     return context if len(context) <= max_chars else context[:max_chars] + "..."
 
 
 @app.post("/query")
 async def query(request: QueryRequest):
+    if request.id not in ["rag_salud", "construccion"]:
+        raise HTTPException(status_code=400, detail="ID no permitido")
+
     request_start = time.time()
-    logger.info(f"Consulta recibida: '{request.question}' (k={request.k})")
+    logger.info(f"Consulta recibida: id={request.id} pregunta='{request.question}' (k={request.k})")
 
-    try:
-        docs = await asyncio.to_thread(vector_store.similarity_search, request.question, request.k)
-    except Exception:
-        logger.exception("Error en búsqueda vectorial")
-        raise HTTPException(status_code=500, detail="Error interno en vector search")
+    if request.id == "rag_salud":
+        try:
+            docs = await asyncio.to_thread(vector_store.similarity_search, request.question, request.k)
+        except Exception:
+            logger.exception("Error en búsqueda vectorial")
+            raise HTTPException(status_code=500, detail="Error interno en vector search")
 
-    if not docs:
-        elapsed = time.time() - request_start
-        logger.info(f"Sin resultados. Tiempo de respuesta: {elapsed:.3f}s")
-        return {
-            "answer": "No hay información disponible para responder a esta pregunta.",
-            "time": round(elapsed, 3),
-            "fragments": []
-        }
+        if not docs:
+            elapsed = time.time() - request_start
+            logger.info(f"Sin resultados. Tiempo de respuesta: {elapsed:.3f}s")
+            return {
+                "id": request.id,
+                "answer": "No hay información disponible para responder a esta pregunta.",
+                "time": round(elapsed, 3),
+                "fragments": []
+            }
 
-    context = "\n\n".join(doc.page_content for doc in docs)
-    context = truncate_context(context)
-    prompt = SYSTEM_PROMPT.format(question=request.question, context=context)
+        context = "\n\n".join(doc.page_content for doc in docs)
+        context = truncate_context(context)
+        prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=context)
+
+    elif request.id == "construccion":
+        # No hacemos búsqueda vectorial, sólo usamos prompt directo
+        prompt = SYSTEM_PROMPT_CONSTRUCCION.format(question=request.question)
 
     try:
         inference_start = time.time()
@@ -116,16 +129,21 @@ async def query(request: QueryRequest):
     total_time = time.time() - request_start
     logger.info(f"POST /query - {total_time:.3f}s")
 
+    fragments = []
+    if request.id == "rag_salud":
+        fragments = [{"id": i + 1, "content": doc.page_content} for i, doc in enumerate(docs)]
+
     return {
+        "id": request.id,
         "answer": answer,
         "time": round(total_time, 3),
-        "fragments": [{"id": i+1, "content": doc.page_content} for i, doc in enumerate(docs)]
+        "fragments": fragments
     }
 
 @app.get("/health")
 async def health_check(request: Request):
-    logger.info("GET /health - 0.001s")  
+    logger.info("GET /health - 0.001s")
     return {"status": "ok"}
 
 if __name__ == "__main__":
-    uv
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
