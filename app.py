@@ -111,7 +111,6 @@ async def query(request: QueryRequest):
         prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=context)
 
     elif request.id == "construccion":
-        # No hacemos búsqueda vectorial, sólo usamos prompt directo
         prompt = SYSTEM_PROMPT_CONSTRUCCION.format(question=request.question)
 
     try:
