@@ -64,6 +64,17 @@ SYSTEM_PROMPT_CONSTRUCCION = (
     "Respuesta:"
 )
 
+SYSTEM_PROMPT_OUT_OF_SCOPE = (
+    "Eres un asistente que siempre responde que cualquier pregunta está fuera de tu alcance.\n"
+    "- Para todas las preguntas que recibas, responde con una sola frase corta diciendo que ese asunto no está cubierto.\n"
+    "- Incluye una disculpa breve.\n"
+    "- No añadas detalles innecesarios.\n"
+    "- En la respuesta menciona de forma genérica y breve el tópico o área al que se refiere la pregunta, evitando repetir la pregunta literal para dar un feedback claro.\n\n"
+    "- La estructura de la frase sería algo así: | <disculpa>, el <asunto genérico> está fuera de mi alcance. | No tienes que seguir este formato estrictamente, pero esa es la idea.\n\n"
+    "Pregunta: {question}\n"
+    "Respuesta:"
+)
+
 class QueryRequest(BaseModel):
     id: str = Field(..., description="ID para identificar la consulta")
     question: str = Field(..., min_length=3, max_length=300, description="Texto de la pregunta")
@@ -84,7 +95,7 @@ def truncate_context(context: str, max_chars: int = 3000) -> str:
 
 @app.post("/query")
 async def query(request: QueryRequest):
-    if request.id not in ["rag_salud", "construccion"]:
+    if request.id not in ["rag_salud", "construccion", "out_of_scope"]:
         raise HTTPException(status_code=400, detail="ID no permitido")
 
     request_start = time.time()
@@ -113,6 +124,9 @@ async def query(request: QueryRequest):
 
     elif request.id == "construccion":
         prompt = SYSTEM_PROMPT_CONSTRUCCION.format(question=request.question)
+
+    elif request.id == "out_of_scope":
+        prompt = SYSTEM_PROMPT_OUT_OF_SCOPE.format(question=request.question)
 
     try:
         inference_start = time.time()
