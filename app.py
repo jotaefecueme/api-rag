@@ -2,32 +2,31 @@ import os
 import time
 import logging
 import asyncio
-import uuid
 import psutil
 from datetime import datetime
+from zoneinfo import ZoneInfo
+from contextlib import asynccontextmanager
+from typing import List
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
 from databases import Database
+
 from langchain_nomic import NomicEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.docstore.in_memory import InMemoryDocstore
+from langchain_chroma import Chroma
 from langchain.chat_models import init_chat_model
-from contextlib import asynccontextmanager
-from zoneinfo import ZoneInfo
 
 load_dotenv()
 
-# Setup Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
-    level=LOG_LEVEL
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    level=LOG_LEVEL,
 )
 logger = logging.getLogger("app")
 
-# Database
 DATABASE_URL = os.getenv("DATABASE_URL")
 db = Database(DATABASE_URL)
 
@@ -35,42 +34,50 @@ db = Database(DATABASE_URL)
 async def lifespan(app: FastAPI):
     logger.info("Conectando a la base de datos...")
     await db.connect()
-    logger.info("DB conectada.")
-    yield
-    logger.info("Desconectando de la base de datos...")
-    await db.disconnect()
-    logger.info("DB desconectada.")
+    logger.info("Base de datos conectada.")
 
-# App Initialization con lifespan
+    logger.info("Cargando vectorstores en memoria (preload)...")
+    await asyncio.to_thread(get_vector_store, "laserum")
+    await asyncio.to_thread(get_vector_store, "salud")
+    logger.info("Vectorstores cargados en memoria.")
+
+    yield
+
+    logger.info("Desconectando base de datos...")
+    await db.disconnect()
+    logger.info("Base de datos desconectada.")
+
+
 app = FastAPI(lifespan=lifespan)
 
-# Embeddings Setup
-logger.info("Inicializando embeddings Nomic...")
-if not os.getenv("NOMIC_API_KEY"):
-    raise ValueError("Falta NOMIC_API_KEY en el entorno o en .env")
-embeddings = NomicEmbeddings(model="nomic-embed-text-v1.5")
-logger.info("Embeddings Nomic inicializados.")
+def get_embeddings() -> NomicEmbeddings:
+    api_key = os.getenv("NOMIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("Falta NOMIC_API_KEY en entorno o .env")
+    logger.info("Inicializando embeddings Nomic...")
+    emb = NomicEmbeddings(model="nomic-embed-text-v1.5")
+    logger.info("Embeddings Nomic inicializados.")
+    return emb
 
-# Vector Stores (FAISS)
-logger.info("Cargando vector_store_salud...")
-vector_store_salud = FAISS.load_local("./faiss_data/salud", embeddings, allow_dangerous_deserialization=True)
-logger.info("vector_store_salud cargado.")
+def get_vector_store(name: str) -> Chroma:
+    embeddings = get_embeddings()
+    path = f"./chroma_data/{name}"
+    logger.debug(f"Cargando vector_store '{name}' desde {path} ...")
+    vs = Chroma(persist_directory=path, embedding_function=embeddings)
+    logger.debug(f"Vector store '{name}' cargado.")
+    return vs
 
-logger.info("Cargando vector_store_laserum...")
-vector_store_laserum = FAISS.load_local("./faiss_data/laserum", embeddings, allow_dangerous_deserialization=True)
-logger.info("vector_store_laserum cargado.")
+def get_llm():
+    model = os.getenv("LLM_MODEL")
+    provider = os.getenv("MODEL_PROVIDER")
+    temperature = float(os.getenv("LLM_TEMPERATURE", 0.0))
+    if not model or not provider:
+        raise RuntimeError("Faltan variables LLM_MODEL o MODEL_PROVIDER en entorno")
+    logger.info(f"Iniciando modelo LLM '{model}' con temperatura={temperature}...")
+    llm = init_chat_model(model, model_provider=provider, temperature=temperature)
+    logger.info("Modelo LLM inicializado.")
+    return llm
 
-# LLM Initialization
-temperature = float(os.getenv("LLM_TEMPERATURE"))
-logger.info(f"Iniciando modelo LLM '{os.getenv('LLM_MODEL')}' con temperatura={temperature}...")
-llm = init_chat_model(
-    os.getenv("LLM_MODEL"),
-    model_provider=os.getenv("MODEL_PROVIDER"),
-    temperature=temperature
-)
-logger.info("Modelo LLM inicializado.")
-
-# System Prompts
 SYSTEM_PROMPT_RAG_SALUD = (
     "Eres un asistente experto en responder preguntas usando solo la información proporcionada.\n"
     "Tu misión es maximizar la utilidad al usuario, sin desviarte jamás del contexto.\n\n"
@@ -106,12 +113,11 @@ SYSTEM_PROMPT_OUT_OF_SCOPE = (
     "- Incluye una disculpa breve.\n"
     "- No añadas detalles innecesarios.\n"
     "- En la respuesta menciona de forma genérica y breve el tópico o área al que se refiere la pregunta, evitando repetir la pregunta literal para dar un feedback claro.\n\n"
-    "- La estructura de la frase sería algo así: | <disculpa>, el <asunto genérico> está fuera de mi alcance. | No tienes que seguir este formato estrictamente, pero esa es la idea.\n\n"
+    "- La estructura de la frase sería algo así: | <disculpa>, el <asunto genérico> está fuera de mi alcance. |\n\n"
     "Pregunta: {question}\n"
     "Respuesta:"
 )
 
-# Models
 class QueryRequest(BaseModel):
     id: str = Field(..., description="ID para identificar la consulta")
     question: str = Field(..., min_length=3, max_length=300, description="Texto de la pregunta")
@@ -120,23 +126,36 @@ class QueryRequest(BaseModel):
     @field_validator("question")
     @classmethod
     def validate_question(cls, v):
-        text = v.strip()
-        if not text:
+        v = v.strip()
+        if not v:
             raise ValueError("La pregunta no puede estar vacía o solo espacios")
-        return text
+        return v
 
-# Utils
+
 def truncate_context(context: str, max_chars: int = 3000) -> str:
-    return context if len(context) <= max_chars else context[:max_chars] + "..."
+    if len(context) <= max_chars:
+        return context
+    trunc = context[:max_chars]
+    last_space = trunc.rfind(" ")
+    if last_space > 0:
+        trunc = trunc[:last_space]
+    return trunc + "..."
 
-async def log_query_to_db(request: Request, input_id, input_text, output_text, infer_time, total_time):
+async def log_query_to_db(
+    request: Request,
+    input_id: str,
+    input_text: str,
+    output_text: str,
+    infer_time: float,
+    total_time: float,
+):
     now = datetime.now(ZoneInfo("Europe/Madrid"))
     query = """
-    INSERT INTO "api-rag" (
-        ip, date, time, input_text, input_id, output_generation, infer_time, total_time, model, provider, temperature
-    ) VALUES (
-        :ip, :date, :time, :input_text, :input_id, :output_generation, :infer_time, :total_time, :model, :provider, :temperature
-    )
+        INSERT INTO "api-rag" (
+            ip, date, time, input_text, input_id, output_generation, infer_time, total_time, model, provider, temperature
+        ) VALUES (
+            :ip, :date, :time, :input_text, :input_id, :output_generation, :infer_time, :total_time, :model, :provider, :temperature
+        )
     """
     values = {
         "ip": request.client.host,
@@ -145,11 +164,11 @@ async def log_query_to_db(request: Request, input_id, input_text, output_text, i
         "input_text": input_text,
         "input_id": input_id,
         "output_generation": output_text,
-        "infer_time": str(round(infer_time, 3)),
-        "total_time": str(round(total_time, 3)),
+        "infer_time": f"{infer_time:.3f}",
+        "total_time": f"{total_time:.3f}",
         "model": os.getenv("LLM_MODEL"),
         "provider": os.getenv("MODEL_PROVIDER"),
-        "temperature": str(float(os.getenv("LLM_TEMPERATURE", 0.0)))
+        "temperature": f"{float(os.getenv('LLM_TEMPERATURE', 0.0)):.1f}",
     }
     try:
         await db.execute(query=query, values=values)
@@ -157,10 +176,10 @@ async def log_query_to_db(request: Request, input_id, input_text, output_text, i
     except Exception as e:
         logger.error(f"Error guardando log en DB: {e}")
 
-# Routes
 @app.post("/query")
 async def query(request: QueryRequest, raw_request: Request):
-    if request.id not in ["rag_salud", "rag_laserum", "construccion", "out_of_scope"]:
+    valid_ids = {"rag_salud", "rag_laserum", "construccion", "out_of_scope"}
+    if request.id not in valid_ids:
         logger.warning(f"ID no permitido recibido: {request.id}")
         raise HTTPException(status_code=400, detail="ID no permitido")
 
@@ -168,68 +187,95 @@ async def query(request: QueryRequest, raw_request: Request):
     logger.info(f"Consulta recibida: id={request.id} pregunta='{request.question}' (k={request.k})")
 
     try:
-        vector_search_start = time.time()
-        if request.id == "rag_salud":
-            docs = await asyncio.to_thread(vector_store_salud.similarity_search, request.question, request.k)
-            logger.info(f"Vector search para 'rag_salud' completado en {time.time() - vector_search_start:.3f}s, {len(docs)} docs encontrados.")
-            prompt = SYSTEM_PROMPT_RAG_SALUD.format(
-                question=request.question,
-                context=truncate_context("\n\n".join(doc.page_content for doc in docs))
-            )
-        elif request.id == "rag_laserum":
-            docs = await asyncio.to_thread(vector_store_laserum.similarity_search, request.question, request.k)
-            logger.info(f"Vector search para 'rag_laserum' completado en {time.time() - vector_search_start:.3f}s, {len(docs)} docs encontrados.")
-            prompt = SYSTEM_PROMPT_RAG_SALUD.format(
-                question=request.question,
-                context=truncate_context("\n\n".join(doc.page_content for doc in docs))
-            )
+        docs = []
+        prompt = ""
+
+        if request.id.startswith("rag_"):
+            vs_name = request.id.replace("rag_", "")
+            vs = get_vector_store(vs_name)
+            docs = await asyncio.to_thread(vs.similarity_search, request.question, request.k)
+            logger.info(f"Vector search para '{request.id}' completado en {time.time() - start_time:.3f}s, {len(docs)} docs encontrados.")
+            if not docs:
+                elapsed = time.time() - start_time
+                logger.info(f"Sin resultados para {request.id}. Tiempo total: {elapsed:.3f}s")
+                return {
+                    "id": request.id,
+                    "answer": "No hay información disponible para responder a esta pregunta.",
+                    "time": round(elapsed, 3),
+                    "fragments": [],
+                }
+            context = truncate_context("\n\n".join(doc.page_content for doc in docs))
+            prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=context)
+
         elif request.id == "construccion":
-            docs = []
             prompt = SYSTEM_PROMPT_CONSTRUCCION.format(question=request.question)
             logger.info("Respuesta de construcción solicitada.")
+
         elif request.id == "out_of_scope":
-            docs = []
             prompt = SYSTEM_PROMPT_OUT_OF_SCOPE.format(question=request.question)
             logger.info("Respuesta de fuera de alcance solicitada.")
 
-        if request.id.startswith("rag_") and not docs:
-            elapsed = time.time() - start_time
-            logger.info(f"Sin resultados para {request.id}. Tiempo total: {elapsed:.3f}s")
-            return {
-                "id": request.id,
-                "answer": "No hay información disponible para responder a esta pregunta.",
-                "time": round(elapsed, 3),
-                "fragments": []
-            }
+        llm = get_llm()
+
+        async def invoke_llm_with_timeout(prompt: str, timeout: float = 10.0):
+            return await asyncio.wait_for(asyncio.to_thread(llm.invoke, prompt), timeout=timeout)
 
         inference_start = time.time()
-        llm_response = await asyncio.to_thread(llm.invoke, prompt)
+        try:
+            llm_response = await invoke_llm_with_timeout(prompt)
+        except asyncio.TimeoutError:
+            logger.error("Timeout en llamada al modelo LLM")
+            raise HTTPException(status_code=504, detail="Tiempo de respuesta del modelo agotado")
         inference_duration = time.time() - inference_start
 
+        output_text = llm_response.content if hasattr(llm_response, "content") else str(llm_response)
         total_duration = time.time() - start_time
+
         process = psutil.Process(os.getpid())
         memory_usage = process.memory_info().rss / 1024**2
 
-        logger.info(f"LLM completado en {inference_duration:.3f}s | Tiempo total desde consulta: {total_duration:.3f}s | RAM usada: {memory_usage:.2f} MB")
+        logger.info(
+            f"LLM completado en {inference_duration:.3f}s | Tiempo total: {total_duration:.3f}s | RAM uso: {memory_usage:.1f} MiB"
+        )
 
-        fragments = [{"id": i + 1, "content": doc.page_content} for i, doc in enumerate(docs)] if docs else []
-
-        await log_query_to_db(raw_request, request.id, request.question, llm_response.content.strip(), inference_duration, total_duration)
+        asyncio.create_task(
+            log_query_to_db(
+                raw_request,
+                request.id,
+                request.question,
+                output_text,
+                inference_duration,
+                total_duration,
+            )
+        )
 
         return {
             "id": request.id,
-            "answer": llm_response.content.strip(),
+            "answer": output_text,
             "time": round(total_duration, 3),
-            "fragments": fragments
+            "fragments": [{"page_content": doc.page_content, "metadata": doc.metadata} for doc in docs] if docs else [],
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception(f"Error en procesamiento de /query: {e}")
-        raise HTTPException(status_code=500, detail="Error interno en procesamiento de la consulta")
+        logger.error(f"Error en endpoint /query: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno en el servidor")
+
 
 @app.get("/health")
-async def health_check(_: Request):
-    start = time.time()
-    response = {"status": "ok"}
-    logger.debug(f"/health OK en {time.time() - start:.3f}s")
-    return response
+async def health():
+    process = psutil.Process(os.getpid())
+    mem = process.memory_info().rss / 1024**2
+    uptime = time.time() - process.create_time()
+    return {
+        "status": "ok",
+        "model": os.getenv("LLM_MODEL"),
+        "provider": os.getenv("MODEL_PROVIDER"),
+        "temperature": float(os.getenv("LLM_TEMPERATURE", 0.0)),
+        "ram_mib": round(mem, 1),
+        "uptime_s": round(uptime, 1),
+    }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8080, log_level=LOG_LEVEL.lower())
