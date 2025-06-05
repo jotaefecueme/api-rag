@@ -7,5 +7,5 @@ databases
 langchain_nomic
 langchain_community
 langchain-groq
-faiss-cpu
+langchain_chroma
 asyncpg
