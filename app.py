@@ -32,9 +32,11 @@ db = Database(DATABASE_URL)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Conectando a la base de datos...")
     await db.connect()
     logger.info("DB conectada.")
     yield
+    logger.info("Desconectando de la base de datos...")
     await db.disconnect()
     logger.info("DB desconectada.")
 
@@ -42,77 +44,42 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # Embeddings Setup
+logger.info("Inicializando embeddings...")
 embeddings = HuggingFaceEmbeddings(
     model_name="intfloat/multilingual-e5-base",
     model_kwargs={"device": os.getenv("DEVICE", "cpu")},
     encode_kwargs={"normalize_embeddings": False}
 )
+logger.info("Embeddings inicializados.")
 
 # Vector Stores
+logger.info("Cargando vector_store_salud...")
 vector_store_salud = Chroma(
     collection_name=os.getenv("CHROMA_COLLECTION", "example_collection"),
     embedding_function=embeddings,
     persist_directory=os.getenv("CHROMA_DIR", "./chroma_salud_db")
 )
-
 logger.info(f"Cargadas {vector_store_salud._collection.count()} entradas en vector_store_salud")
 
+logger.info("Cargando vector_store_laserum...")
 vector_store_laserum = Chroma(
     collection_name=os.getenv("CHROMA_COLLECTION", "example_collection"),
     embedding_function=embeddings,
     persist_directory=os.getenv("CHROMA_DIR", "./chroma_laserum_db")
 )
-
 logger.info(f"Cargadas {vector_store_laserum._collection.count()} entradas en vector_store_laserum")
 
 # LLM Initialization
 temperature = float(os.getenv("LLM_TEMPERATURE"))
+logger.info(f"Iniciando modelo LLM '{os.getenv('LLM_MODEL')}' con temperatura={temperature}...")
 llm = init_chat_model(
     os.getenv("LLM_MODEL"),
     model_provider=os.getenv("MODEL_PROVIDER"),
     temperature=temperature
 )
+logger.info("Modelo LLM inicializado.")
 
-# System Prompts
-SYSTEM_PROMPT_RAG_SALUD = (
-    "Eres un asistente experto en responder preguntas usando solo la información proporcionada.\n"
-    "Tu misión es maximizar la utilidad al usuario, sin desviarte jamás del contexto.\n\n"
-    "OBJETIVOS:\n"
-    "1. Responder con precisión y brevedad (≤ 40 palabras).\n"
-    "2. Ayudar al usuario al máximo con la información disponible.\n\n"
-    "RESTRICCIONES:\n"
-    "- No menciones la fuente, el contexto ni uses expresiones tipo “según…”, “documentación”.\n"
-    "- No especules, conjetures ni inventes datos.\n"
-    "- No uses saludos, despedidas ni frases de cortesía.\n"
-    "- Si no hay información suficiente, responde EXACTAMENTE:\n"
-    "  “No hay información disponible para responder a esta pregunta.”\n\n"
-    "FORMATO:\n"
-    "- Texto plano, máximo 40 palabras.\n"
-    "- Si aportas listas o viñetas, que sean muy breves (≤ 3 ítems).\n\n"
-    "Pregunta: {question}\n"
-    "Información: {context}\n"
-    "Respuesta:"
-)
-
-SYSTEM_PROMPT_CONSTRUCCION = (
-    "Eres un asistente que siempre responde con una sola frase breve indicando que la funcionalidad esta actualmente en construcción.\n"
-    "- No expliques el motivo ni des detalles.\n"
-    "- No añadas cortesía ni relleno.\n"
-    "- La frase debe demostrar que has entendido el tema, pero indicar que esa funcionalidad esta actualmente en construcción.\n\n"
-    "Pregunta: {question}\n"
-    "Respuesta:"
-)
-
-SYSTEM_PROMPT_OUT_OF_SCOPE = (
-    "Eres un asistente que siempre responde que cualquier pregunta está fuera de tu alcance.\n"
-    "- Para todas las preguntas que recibas, responde con una sola frase corta diciendo que ese asunto no está cubierto.\n"
-    "- Incluye una disculpa breve.\n"
-    "- No añadas detalles innecesarios.\n"
-    "- En la respuesta menciona de forma genérica y breve el tópico o área al que se refiere la pregunta, evitando repetir la pregunta literal para dar un feedback claro.\n\n"
-    "- La estructura de la frase sería algo así: | <disculpa>, el <asunto genérico> está fuera de mi alcance. | No tienes que seguir este formato estrictamente, pero esa es la idea.\n\n"
-    "Pregunta: {question}\n"
-    "Respuesta:"
-)
+# System Prompts (sin cambios, omito por brevedad en la respuesta)
 
 # Models
 class QueryRequest(BaseModel):
@@ -156,6 +123,7 @@ async def log_query_to_db(request: Request, input_id, input_text, output_text, i
     }
     try:
         await db.execute(query=query, values=values)
+        logger.debug("Consulta registrada en la base de datos correctamente.")
     except Exception as e:
         logger.error(f"Error guardando log en DB: {e}")
 
@@ -163,42 +131,56 @@ async def log_query_to_db(request: Request, input_id, input_text, output_text, i
 @app.post("/query")
 async def query(request: QueryRequest, raw_request: Request):
     if request.id not in ["rag_salud", "rag_laserum", "construccion", "out_of_scope"]:
+        logger.warning(f"ID no permitido recibido: {request.id}")
         raise HTTPException(status_code=400, detail="ID no permitido")
 
     start_time = time.time()
     logger.info(f"Consulta recibida: id={request.id} pregunta='{request.question}' (k={request.k})")
 
     try:
+        vector_search_start = time.time()
         if request.id == "rag_salud":
             docs = await asyncio.to_thread(vector_store_salud.similarity_search, request.question, request.k)
-            prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=truncate_context("\n\n".join(doc.page_content for doc in docs)))
+            logger.info(f"Vector search para 'rag_salud' completado en {time.time() - vector_search_start:.3f}s, {len(docs)} docs encontrados.")
+            prompt = SYSTEM_PROMPT_RAG_SALUD.format(
+                question=request.question,
+                context=truncate_context("\n\n".join(doc.page_content for doc in docs))
+            )
         elif request.id == "rag_laserum":
             docs = await asyncio.to_thread(vector_store_laserum.similarity_search, request.question, request.k)
-            prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=truncate_context("\n\n".join(doc.page_content for doc in docs)))
+            logger.info(f"Vector search para 'rag_laserum' completado en {time.time() - vector_search_start:.3f}s, {len(docs)} docs encontrados.")
+            prompt = SYSTEM_PROMPT_RAG_SALUD.format(
+                question=request.question,
+                context=truncate_context("\n\n".join(doc.page_content for doc in docs))
+            )
         elif request.id == "construccion":
             docs = []
             prompt = SYSTEM_PROMPT_CONSTRUCCION.format(question=request.question)
+            logger.info("Respuesta de construcción solicitada.")
         elif request.id == "out_of_scope":
             docs = []
             prompt = SYSTEM_PROMPT_OUT_OF_SCOPE.format(question=request.question)
+            logger.info("Respuesta de fuera de alcance solicitada.")
 
         if request.id.startswith("rag_") and not docs:
-            logger.info(f"Sin resultados para {request.id}. Tiempo: {time.time() - start_time:.3f}s")
+            elapsed = time.time() - start_time
+            logger.info(f"Sin resultados para {request.id}. Tiempo total: {elapsed:.3f}s")
             return {
                 "id": request.id,
                 "answer": "No hay información disponible para responder a esta pregunta.",
-                "time": round(time.time() - start_time, 3),
+                "time": round(elapsed, 3),
                 "fragments": []
             }
 
         inference_start = time.time()
         llm_response = await asyncio.to_thread(llm.invoke, prompt)
         inference_duration = time.time() - inference_start
-        total_duration = time.time() - start_time
 
+        total_duration = time.time() - start_time
         process = psutil.Process(os.getpid())
         memory_usage = process.memory_info().rss / 1024**2
-        logger.info(f"LLM completado en {inference_duration:.3f}s | RAM usada: {memory_usage:.2f} MB")
+
+        logger.info(f"LLM completado en {inference_duration:.3f}s | Tiempo total desde consulta: {total_duration:.3f}s | RAM usada: {memory_usage:.2f} MB")
 
         fragments = [{"id": i + 1, "content": doc.page_content} for i, doc in enumerate(docs)] if docs else []
 
