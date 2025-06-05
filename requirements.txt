@@ -9,7 +9,8 @@ langchain
 langchain-community
 langchainhub
 langchain-huggingface
-langchain-chroma
 asyncpg
 gunicorn
 langchain-groq
+langchain_nomic
+faiss
