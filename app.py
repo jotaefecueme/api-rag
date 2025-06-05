@@ -132,7 +132,7 @@ class QueryRequest(BaseModel):
         return v
 
 
-def truncate_context(context: str, max_chars: int = 3000) -> str:
+def truncate_context(context: str, max_chars: int = 100000) -> str:
     if len(context) <= max_chars:
         return context
     trunc = context[:max_chars]
