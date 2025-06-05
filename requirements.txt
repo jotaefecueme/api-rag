@@ -11,3 +11,4 @@ langchainhub
 langchain-huggingface
 langchain-chroma
 asyncpg
+gunicorn
