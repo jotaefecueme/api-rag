@@ -6,5 +6,6 @@ dotenv
 databases
 langchain_nomic
 langchain_community
+langchain-groq
 faiss-cpu
 asyncpg
