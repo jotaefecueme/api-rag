@@ -10,8 +10,9 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
 from databases import Database
-from langchain_huggingface.embeddings import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
+from langchain_nomic import NomicEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain.chat_models import init_chat_model
 from contextlib import asynccontextmanager
 from zoneinfo import ZoneInfo
@@ -44,30 +45,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # Embeddings Setup
-logger.info("Inicializando embeddings...")
-embeddings = HuggingFaceEmbeddings(
-    model_name="intfloat/multilingual-e5-base",
-    model_kwargs={"device": os.getenv("DEVICE", "cpu")},
-    encode_kwargs={"normalize_embeddings": False}
-)
-logger.info("Embeddings inicializados.")
+logger.info("Inicializando embeddings Nomic...")
+if not os.getenv("NOMIC_API_KEY"):
+    raise ValueError("Falta NOMIC_API_KEY en el entorno o en .env")
+embeddings = NomicEmbeddings(model="nomic-embed-text-v1.5")
+logger.info("Embeddings Nomic inicializados.")
 
-# Vector Stores
+# Vector Stores (FAISS)
 logger.info("Cargando vector_store_salud...")
-vector_store_salud = Chroma(
-    collection_name=os.getenv("CHROMA_COLLECTION", "example_collection"),
-    embedding_function=embeddings,
-    persist_directory=os.getenv("CHROMA_DIR", "./chroma_salud_db")
-)
-logger.info(f"Cargadas {vector_store_salud._collection.count()} entradas en vector_store_salud")
+vector_store_salud = FAISS.load_local("./faiss_data/salud", embeddings, allow_dangerous_deserialization=True)
+logger.info("vector_store_salud cargado.")
 
 logger.info("Cargando vector_store_laserum...")
-vector_store_laserum = Chroma(
-    collection_name=os.getenv("CHROMA_COLLECTION", "example_collection"),
-    embedding_function=embeddings,
-    persist_directory=os.getenv("CHROMA_DIR", "./chroma_laserum_db")
-)
-logger.info(f"Cargadas {vector_store_laserum._collection.count()} entradas en vector_store_laserum")
+vector_store_laserum = FAISS.load_local("./faiss_data/laserum", embeddings, allow_dangerous_deserialization=True)
+logger.info("vector_store_laserum cargado.")
 
 # LLM Initialization
 temperature = float(os.getenv("LLM_TEMPERATURE"))
