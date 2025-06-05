@@ -12,3 +12,4 @@ langchain-huggingface
 langchain-chroma
 asyncpg
 gunicorn
+langchain-groq
