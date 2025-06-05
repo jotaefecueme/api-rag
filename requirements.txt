@@ -7,3 +7,4 @@ databases
 langchain_nomic
 langchain_community
 faiss-cpu
+asyncpg
