@@ -5,7 +5,6 @@ import asyncio
 import uuid
 import psutil
 from datetime import datetime
-import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
@@ -38,7 +37,7 @@ async def lifespan(app: FastAPI):
     await db.disconnect()
     logger.info("DB desconectada.")
 
-# App Initialization con lifespan
+# App Initialization
 app = FastAPI(lifespan=lifespan)
 
 # Embeddings Setup
@@ -54,7 +53,6 @@ vector_store_salud = Chroma(
     embedding_function=embeddings,
     persist_directory=os.getenv("CHROMA_DIR", "./chroma_salud_db")
 )
-
 logger.info(f"Cargadas {vector_store_salud._collection.count()} entradas en vector_store_salud")
 
 vector_store_laserum = Chroma(
@@ -62,7 +60,6 @@ vector_store_laserum = Chroma(
     embedding_function=embeddings,
     persist_directory=os.getenv("CHROMA_DIR", "./chroma_laserum_db")
 )
-
 logger.info(f"Cargadas {vector_store_laserum._collection.count()} entradas en vector_store_laserum")
 
 # LLM Initialization
@@ -109,7 +106,6 @@ SYSTEM_PROMPT_OUT_OF_SCOPE = (
     "- Incluye una disculpa breve.\n"
     "- No añadas detalles innecesarios.\n"
     "- En la respuesta menciona de forma genérica y breve el tópico o área al que se refiere la pregunta, evitando repetir la pregunta literal para dar un feedback claro.\n\n"
-    "- La estructura de la frase sería algo así: | <disculpa>, el <asunto genérico> está fuera de mi alcance. | No tienes que seguir este formato estrictamente, pero esa es la idea.\n\n"
     "Pregunta: {question}\n"
     "Respuesta:"
 )
@@ -171,10 +167,16 @@ async def query(request: QueryRequest, raw_request: Request):
     try:
         if request.id == "rag_salud":
             docs = await asyncio.to_thread(vector_store_salud.similarity_search, request.question, request.k)
-            prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=truncate_context("\n\n".join(doc.page_content for doc in docs)))
+            prompt = SYSTEM_PROMPT_RAG_SALUD.format(
+                question=request.question,
+                context=truncate_context("\n\n".join(doc.page_content for doc in docs))
+            )
         elif request.id == "rag_laserum":
             docs = await asyncio.to_thread(vector_store_laserum.similarity_search, request.question, request.k)
-            prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=truncate_context("\n\n".join(doc.page_content for doc in docs)))
+            prompt = SYSTEM_PROMPT_RAG_SALUD.format(
+                question=request.question,
+                context=truncate_context("\n\n".join(doc.page_content for doc in docs))
+            )
         elif request.id == "construccion":
             docs = []
             prompt = SYSTEM_PROMPT_CONSTRUCCION.format(question=request.question)
@@ -218,6 +220,5 @@ async def query(request: QueryRequest, raw_request: Request):
 @app.get("/health")
 async def health_check(_: Request):
     start = time.time()
-    response = {"status": "ok"}
     logger.debug(f"/health OK en {time.time() - start:.3f}s")
-    return response
+    return {"status": "ok"}
