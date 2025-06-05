@@ -13,4 +13,4 @@ asyncpg
 gunicorn
 langchain-groq
 langchain_nomic
-faiss
+faiss-cpu
