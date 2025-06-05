@@ -1,5 +1,6 @@
 psutil
 uvicorn
+gunicorn
 fastapi
 dotenv
 databases
