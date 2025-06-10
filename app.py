@@ -55,7 +55,7 @@ def get_embeddings() -> NomicEmbeddings:
     if not api_key:
         raise RuntimeError("Falta NOMIC_API_KEY en entorno o .env")
     logger.info("Inicializando embeddings Nomic...")
-    emb = NomicEmbeddings(model="nomic-embed-text-v1.5")
+    emb = NomicEmbeddings(model="gte-multilingual-base")
     logger.info("Embeddings Nomic inicializados.")
     return emb
 
