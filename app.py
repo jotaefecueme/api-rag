@@ -70,7 +70,7 @@ def get_vector_store(name: str) -> FAISS:
     if not os.path.exists(index_path) or not os.path.exists(metadata_path):
         raise RuntimeError(f"Vectorstore FAISS para '{name}' no encontrado en disco.")
 
-    vs = FAISS.load_local(path, embeddings, allow_dangerous_deserialization=True)
+    vs, _ = FAISS.load_local(path, embeddings, allow_dangerous_deserialization=True)
     logger.debug(f"Vector store FAISS '{name}' cargado.")
     return vs
 
