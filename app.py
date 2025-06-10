@@ -37,7 +37,6 @@ async def lifespan(app: FastAPI):
     logger.info("Base de datos conectada.")
 
     logger.info("Cargando vectorstores FAISS en memoria (preload)...")
-    # Carga en background con asyncio.to_thread para no bloquear evento
     await asyncio.to_thread(get_vector_store, "laserum")
     await asyncio.to_thread(get_vector_store, "salud")
     logger.info("Vectorstores FAISS cargados en memoria.")
@@ -64,17 +63,18 @@ def get_vector_store(name: str) -> FAISS:
     embeddings = get_embeddings()
     path = f"./faiss_data/{name}"
     index_path = os.path.join(path, "index.faiss")
-    metadata_path = os.path.join(path, "docs.pkl")
+    metadata_path = os.path.join(path, "index.pkl")
 
     logger.debug(f"Cargando vector_store FAISS '{name}' desde {path} ...")
 
     if not os.path.exists(index_path) or not os.path.exists(metadata_path):
         raise RuntimeError(f"Vectorstore FAISS para '{name}' no encontrado en disco.")
 
-    # Carga index FAISS + metadatos
     vs = FAISS.load_local(path, embeddings)
     logger.debug(f"Vector store FAISS '{name}' cargado.")
     return vs
+
+
 
 def get_llm():
     model = os.getenv("LLM_MODEL")
