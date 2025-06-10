@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from databases import Database
 
 from langchain_nomic import NomicEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain.chat_models import init_chat_model
 
 load_dotenv()
@@ -70,7 +70,7 @@ def get_vector_store(name: str) -> FAISS:
     if not os.path.exists(index_path) or not os.path.exists(metadata_path):
         raise RuntimeError(f"Vectorstore FAISS para '{name}' no encontrado en disco.")
 
-    vs = FAISS.load_local(path, embeddings)
+    vs = FAISS.load_local(path, embeddings, allow_dangerous_deserialization=True)
     logger.debug(f"Vector store FAISS '{name}' cargado.")
     return vs
 
