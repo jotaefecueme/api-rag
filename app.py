@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from databases import Database
 
 from langchain_nomic import NomicEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_community.vectorstores import Chroma
 from langchain.chat_models import init_chat_model
 
 load_dotenv()
@@ -30,16 +30,40 @@ logger = logging.getLogger("app")
 DATABASE_URL = os.getenv("DATABASE_URL")
 db = Database(DATABASE_URL)
 
+embeddings = None
+vectorstores = {}
+llm = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global embeddings, vectorstores, llm
+
+    logger.info("Inicializando embeddings Nomic...")
+    embeddings = NomicEmbeddings(model="gte-multilingual-base")
+    logger.info("Embeddings Nomic inicializados.")
+
+    for name in ("laserum", "salud"):
+        path = f"./chroma_data/{name}"
+        if not os.path.exists(path):
+            logger.error(f"Vectorstore Chroma para '{name}' no encontrado en disco en {path}")
+            raise RuntimeError(f"Vectorstore '{name}' no encontrado.")
+        logger.info(f"Cargando vectorstore Chroma '{name}' desde {path} ...")
+        vectorstores[name] = Chroma(persist_directory=path, embedding_function=embeddings)
+        logger.info(f"Vectorstore '{name}' cargado.")
+
+    model = os.getenv("LLM_MODEL")
+    provider = os.getenv("MODEL_PROVIDER")
+    temperature = float(os.getenv("LLM_TEMPERATURE", 0.0))
+    if not model or not provider:
+        logger.error("Variables LLM_MODEL o MODEL_PROVIDER no definidas en entorno")
+        raise RuntimeError("Faltan variables LLM_MODEL o MODEL_PROVIDER en entorno")
+    logger.info(f"Iniciando modelo LLM '{model}' con temperatura={temperature}...")
+    llm = init_chat_model(model, model_provider=provider, temperature=temperature)
+    logger.info("Modelo LLM inicializado.")
+
     logger.info("Conectando a la base de datos...")
     await db.connect()
     logger.info("Base de datos conectada.")
-
-    logger.info("Cargando vectorstores FAISS en memoria (preload)...")
-    await asyncio.to_thread(get_vector_store, "laserum")
-    await asyncio.to_thread(get_vector_store, "salud")
-    logger.info("Vectorstores FAISS cargados en memoria.")
 
     yield
 
@@ -49,83 +73,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
-def get_embeddings() -> NomicEmbeddings:
-    api_key = os.getenv("NOMIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("Falta NOMIC_API_KEY en entorno o .env")
-    logger.info("Inicializando embeddings Nomic...")
-    emb = NomicEmbeddings(model="gte-multilingual-base")
-    logger.info("Embeddings Nomic inicializados.")
-    return emb
-
-def get_vector_store(name: str) -> FAISS:
-    embeddings = get_embeddings()
-    path = f"./faiss_data/{name}"
-    index_path = os.path.join(path, "index.faiss")
-    metadata_path = os.path.join(path, "index.pkl")
-
-    logger.debug(f"Cargando vector_store FAISS '{name}' desde {path} ...")
-
-    if not os.path.exists(index_path) or not os.path.exists(metadata_path):
-        raise RuntimeError(f"Vectorstore FAISS para '{name}' no encontrado en disco.")
-
-    vs, _ = FAISS.load_local(path, embeddings, allow_dangerous_deserialization=True)
-    logger.debug(f"Vector store FAISS '{name}' cargado.")
-    return vs
-
-
-
-def get_llm():
-    model = os.getenv("LLM_MODEL")
-    provider = os.getenv("MODEL_PROVIDER")
-    temperature = float(os.getenv("LLM_TEMPERATURE", 0.0))
-    if not model or not provider:
-        raise RuntimeError("Faltan variables LLM_MODEL o MODEL_PROVIDER en entorno")
-    logger.info(f"Iniciando modelo LLM '{model}' con temperatura={temperature}...")
-    llm = init_chat_model(model, model_provider=provider, temperature=temperature)
-    logger.info("Modelo LLM inicializado.")
-    return llm
-
-SYSTEM_PROMPT_RAG_SALUD = (
-    "Eres un asistente experto en responder preguntas usando solo la información proporcionada.\n"
-    "Tu misión es maximizar la utilidad al usuario, sin desviarte jamás del contexto.\n\n"
-    "OBJETIVOS:\n"
-    "1. Responder con precisión y brevedad (≤ 40 palabras).\n"
-    "2. Ayudar al usuario al máximo con la información disponible.\n\n"
-    "RESTRICCIONES:\n"
-    "- No menciones la fuente, el contexto ni uses expresiones tipo “según…”, “documentación”.\n"
-    "- No especules, conjetures ni inventes datos.\n"
-    "- No uses saludos, despedidas ni frases de cortesía.\n"
-    "- Si no hay información suficiente, responde EXACTAMENTE:\n"
-    "  “No hay información disponible para responder a esta pregunta.”\n\n"
-    "FORMATO:\n"
-    "- Texto plano, máximo 40 palabras.\n"
-    "- Si aportas listas o viñetas, que sean muy breves (≤ 3 ítems).\n\n"
-    "Pregunta: {question}\n"
-    "Información: {context}\n"
-    "Respuesta:"
-)
-
-SYSTEM_PROMPT_CONSTRUCCION = (
-    "Eres un asistente que siempre responde con una sola frase breve indicando que la funcionalidad esta actualmente en construcción.\n"
-    "- No expliques el motivo ni des detalles.\n"
-    "- No añadas cortesía ni relleno.\n"
-    "- La frase debe demostrar que has entendido el tema, pero indicar que esa funcionalidad esta actualmente en construcción.\n\n"
-    "Pregunta: {question}\n"
-    "Respuesta:"
-)
-
-SYSTEM_PROMPT_OUT_OF_SCOPE = (
-    "Eres un asistente que siempre responde que cualquier pregunta está fuera de tu alcance.\n"
-    "- Para todas las preguntas que recibas, responde con una sola frase corta diciendo que ese asunto no está cubierto.\n"
-    "- Incluye una disculpa breve.\n"
-    "- No añadas detalles innecesarios.\n"
-    "- En la respuesta menciona de forma genérica y breve el tópico o área al que se refiere la pregunta, evitando repetir la pregunta literal para dar un feedback claro.\n\n"
-    "- La estructura de la frase sería algo así: | <disculpa>, el <asunto genérico> está fuera de mi alcance. |\n\n"
-    "Pregunta: {question}\n"
-    "Respuesta:"
-)
 
 class QueryRequest(BaseModel):
     id: str = Field(..., description="ID para identificar la consulta")
@@ -201,7 +148,10 @@ async def query(request: QueryRequest, raw_request: Request):
 
         if request.id.startswith("rag_"):
             vs_name = request.id.replace("rag_", "")
-            vs = get_vector_store(vs_name)
+            if vs_name not in vectorstores:
+                logger.error(f"Vectorstore '{vs_name}' no cargado.")
+                raise HTTPException(status_code=500, detail=f"Vectorstore '{vs_name}' no cargado")
+            vs = vectorstores[vs_name]
             docs = await asyncio.to_thread(vs.similarity_search, request.question, request.k)
             logger.info(f"Vector search para '{request.id}' completado en {time.time() - start_time:.3f}s, {len(docs)} docs encontrados.")
             if not docs:
@@ -224,7 +174,9 @@ async def query(request: QueryRequest, raw_request: Request):
             prompt = SYSTEM_PROMPT_OUT_OF_SCOPE.format(question=request.question)
             logger.info("Respuesta de fuera de alcance solicitada.")
 
-        llm = get_llm()
+        if llm is None:
+            logger.error("LLM no inicializado.")
+            raise HTTPException(status_code=500, detail="Modelo LLM no inicializado")
 
         async def invoke_llm_with_timeout(prompt: str, timeout: float = 10.0):
             return await asyncio.wait_for(asyncio.to_thread(llm.invoke, prompt), timeout=timeout)

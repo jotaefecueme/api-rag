@@ -8,4 +8,4 @@ langchain_nomic
 langchain_community
 langchain-groq
 asyncpg
-faiss-cpu
+langchain-chroma
