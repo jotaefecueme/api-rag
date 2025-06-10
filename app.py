@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from databases import Database
 
 from langchain_nomic import NomicEmbeddings
-from langchain_chroma import Chroma
+from langchain.vectorstores import FAISS
 from langchain.chat_models import init_chat_model
 
 load_dotenv()
@@ -36,10 +36,11 @@ async def lifespan(app: FastAPI):
     await db.connect()
     logger.info("Base de datos conectada.")
 
-    logger.info("Cargando vectorstores en memoria (preload)...")
+    logger.info("Cargando vectorstores FAISS en memoria (preload)...")
+    # Carga en background con asyncio.to_thread para no bloquear evento
     await asyncio.to_thread(get_vector_store, "laserum")
     await asyncio.to_thread(get_vector_store, "salud")
-    logger.info("Vectorstores cargados en memoria.")
+    logger.info("Vectorstores FAISS cargados en memoria.")
 
     yield
 
@@ -59,12 +60,20 @@ def get_embeddings() -> NomicEmbeddings:
     logger.info("Embeddings Nomic inicializados.")
     return emb
 
-def get_vector_store(name: str) -> Chroma:
+def get_vector_store(name: str) -> FAISS:
     embeddings = get_embeddings()
-    path = f"./chroma_data/{name}"
-    logger.debug(f"Cargando vector_store '{name}' desde {path} ...")
-    vs = Chroma(persist_directory=path, embedding_function=embeddings)
-    logger.debug(f"Vector store '{name}' cargado.")
+    path = f"./faiss_data/{name}"
+    index_path = os.path.join(path, "index.faiss")
+    metadata_path = os.path.join(path, "docs.pkl")
+
+    logger.debug(f"Cargando vector_store FAISS '{name}' desde {path} ...")
+
+    if not os.path.exists(index_path) or not os.path.exists(metadata_path):
+        raise RuntimeError(f"Vectorstore FAISS para '{name}' no encontrado en disco.")
+
+    # Carga index FAISS + metadatos
+    vs = FAISS.load_local(path, embeddings)
+    logger.debug(f"Vector store FAISS '{name}' cargado.")
     return vs
 
 def get_llm():
