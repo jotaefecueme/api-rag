@@ -153,8 +153,6 @@ SYSTEM_PROMPT_RAG_TARJETA65 = (
     "- Evita saludos formales, despedidas o frases complejas.\n\n"
     "INSTRUCCIONES ADICIONALES:\n"
     "- Si no hay información en el contexto pero la pregunta está relacionada con la Tarjeta 65 o teleasistencia, responde con sentido común.\n"
-    "- Si la pregunta está fuera del ámbito, responde EXACTAMENTE:\n"
-    "  “Esta pregunta está fuera del ámbito de la Tarjeta 65 y teleasistencia.”\n\n"
     "FORMATO:\n"
     "- Texto claro, máximo 40 palabras.\n"
     "- Listas o viñetas solo si son muy breves (máx. 3 ítems).\n\n"
