@@ -183,8 +183,6 @@ SYSTEM_PROMPT_RAG_TELEASISTENCIA = (
     "  • Evita saludos, despedidas o frases excesivamente complejas.\n"
     "- **Instrucciones adicionales:**\n"
     "  • Si la pregunta está relacionada con la teleasistencia pero no se proporciona contexto, utiliza el sentido común para ofrecer una respuesta útil.\n"
-    "  • Si la pregunta está completamente fuera del ámbito de la teleasistencia, responde EXACTAMENTE:\n"
-    "    “Esta pregunta está fuera del ámbito de la teleasistencia.”\n"
     "- **Validación de datos:** Asegúrate de que cualquier dato proporcionado en la respuesta sea validado contra la información disponible para evitar errores.\n\n"
 
     "### 4. Formato de Salida\n"
