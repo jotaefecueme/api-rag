@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
 
     model = os.getenv("LLM_MODEL")
     provider = os.getenv("MODEL_PROVIDER")
-    temperature = float(os.getenv("LLM_TEMPERATURE", 0.0))
+    temperature = float(os.getenv("LLM_TEMPERATURE", 0.6))
     if not model or not provider:
         logger.error("Variables LLM_MODEL o MODEL_PROVIDER no definidas en entorno")
         raise RuntimeError("Faltan variables LLM_MODEL o MODEL_PROVIDER en entorno")
