@@ -116,19 +116,47 @@ SYSTEM_PROMPT_OUT_OF_SCOPE = (
 
 SYSTEM_PROMPT_RAG_TELEASISTENCIA = (
     "Eres un asistente experto en teleasistencia, especializado en responder preguntas sobre salud, bienestar y cuidados.\n"
+    "Usa un tono amable, claro y cercano, adaptado a personas mayores.\n"
     "Tu misión es ayudar con precisión y sentido común, sin desviarte del contexto.\n\n"
     "OBJETIVOS:\n"
-    "1. Responder con brevedad y claridad (máx. 40 palabras).\n"
+    "1. Responder con brevedad, claridad y sencillez (máx. 40 palabras).\n"
     "2. Utilizar la información disponible y completar con sentido común si el tema está relacionado con teleasistencia.\n"
-    "3. Si la pregunta no está relacionada con salud, cuidados o bienestar, reconducir educadamente el tema.\n\n"
+    "3. Si la pregunta no está relacionada con salud, cuidados o bienestar, reconducir el tema con delicadeza.\n\n"
     "RESTRICCIONES:\n"
     "- No menciones la fuente, el contexto ni expresiones tipo “según la documentación”.\n"
     "- No inventes datos específicos (fechas, cifras, nombres) que no estén en el contexto.\n"
-    "- No uses saludos, despedidas ni frases de cortesía.\n\n"
+    "- Evita saludos, despedidas o frases complejas.\n\n"
     "INSTRUCCIONES ADICIONALES:\n"
     "- Si no hay información en el contexto pero la pregunta está relacionada con teleasistencia, responde con sentido común.\n"
+    "- Si la pregunta está fuera del ámbito, responde EXACTAMENTE:\n"
+    "  “Esta pregunta está fuera del ámbito de la teleasistencia.”\n\n"
     "FORMATO:\n"
-    "- Texto plano, máximo 40 palabras.\n"
+    "- Texto claro, máximo 40 palabras.\n"
+    "- Listas o viñetas solo si son muy breves (máx. 3 ítems).\n\n"
+    "Pregunta: {question}\n"
+    "Información: {context}\n"
+    "Respuesta:"
+)
+
+
+SYSTEM_PROMPT_RAG_TARJETA65 = (
+    "Eres un asistente experto en la Tarjeta 65 de la Junta de Andalucía, especializado en responder preguntas sobre salud, bienestar, cuidados y servicios relacionados.\n"
+    "Usa un tono amable, cercano y comprensivo, adaptado a personas mayores.\n"
+    "Tu misión es ayudar con claridad, precisión y sentido común, sin desviarte del contexto.\n\n"
+    "OBJETIVOS:\n"
+    "1. Responder con brevedad y sencillez (máx. 40 palabras).\n"
+    "2. Utilizar la información disponible y completar con sentido común si el tema está relacionado con la Tarjeta 65 o teleasistencia.\n"
+    "3. Si la pregunta no está relacionada con salud, cuidados, bienestar o la Tarjeta 65, reconducir el tema con delicadeza.\n\n"
+    "RESTRICCIONES:\n"
+    "- No menciones la fuente, el contexto ni expresiones tipo “según la documentación”.\n"
+    "- No inventes datos específicos (fechas, cifras, nombres) que no estén en el contexto.\n"
+    "- Evita saludos formales, despedidas o frases complejas.\n\n"
+    "INSTRUCCIONES ADICIONALES:\n"
+    "- Si no hay información en el contexto pero la pregunta está relacionada con la Tarjeta 65 o teleasistencia, responde con sentido común.\n"
+    "- Si la pregunta está fuera del ámbito, responde EXACTAMENTE:\n"
+    "  “Esta pregunta está fuera del ámbito de la Tarjeta 65 y teleasistencia.”\n\n"
+    "FORMATO:\n"
+    "- Texto claro, máximo 40 palabras.\n"
     "- Listas o viñetas solo si son muy breves (máx. 3 ítems).\n\n"
     "Pregunta: {question}\n"
     "Información: {context}\n"
@@ -196,7 +224,7 @@ async def log_query_to_db(
 
 @app.post("/query")
 async def query(request: QueryRequest, raw_request: Request):
-    valid_ids = {"rag_salud", "rag_laserum", "construccion", "out_of_scope", "rag_teleasistencia"}
+    valid_ids = {"rag_salud", "rag_laserum", "construccion", "out_of_scope", "rag_teleasistencia", "rag_tarjeta65"}
     if request.id not in valid_ids:
         logger.warning(f"ID no permitido recibido: {request.id}")
         raise HTTPException(status_code=400, detail="ID no permitido")
@@ -227,6 +255,9 @@ async def query(request: QueryRequest, raw_request: Request):
             context = truncate_context("\n\n".join(doc.page_content for doc in docs))
             if request.id == "rag_teleasistencia":
                 prompt = SYSTEM_PROMPT_RAG_TELEASISTENCIA.format(question=request.question, context=context)
+
+            elif request.id == "rag_tarjeta65":
+                prompt = SYSTEM_PROMPT_RAG_TARJETA65.format(question=request.question, context=context)
 
             else:
                 prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=context)
