@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     embeddings = NomicEmbeddings(model="gte-multilingual-base")
     logger.info("Embeddings Nomic inicializados.")
 
-    for name in ("laserum", "salud", "teleasistencia"):
+    for name in ("laserum", "salud", "teleasistencia", "tarjeta65"):
         path = f"./chroma_data/{name}"
         if not os.path.exists(path):
             logger.error(f"Vectorstore Chroma para '{name}' no encontrado en disco en {path}")
