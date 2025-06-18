@@ -325,7 +325,8 @@ async def query(request: QueryRequest, raw_request: Request):
                 logger.error(f"Vectorstore '{vs_name}' no cargado.")
                 raise HTTPException(status_code=500, detail=f"Vectorstore '{vs_name}' no cargado")
             vs = vectorstores[vs_name]
-            docs = await asyncio.to_thread(vs.similarity_search, request.question, request.k)
+            docs_with_scores = await asyncio.to_thread(vs.similarity_search_with_score, request.question, request.k)
+            docs = [doc for doc, _ in docs_with_scores]
             logger.info(f"Vector search para '{request.id}' completado en {time.time() - start_time:.3f}s, {len(docs)} docs encontrados.")
             if not docs:
                 elapsed = time.time() - start_time
@@ -394,7 +395,15 @@ async def query(request: QueryRequest, raw_request: Request):
             "id": request.id,
             "answer": output_text,
             "time": round(total_duration, 3),
-            "fragments": [{"page_content": doc.page_content, "metadata": doc.metadata} for doc in docs] if docs else [],
+            "fragments": [
+                {
+                    "page_content": doc.page_content,
+                    "metadata": doc.metadata,
+                    "score": round(score, 4) 
+                }
+    for doc, score in docs_with_scores
+] if docs else [],
+
         }
 
     except HTTPException:
