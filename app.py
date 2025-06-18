@@ -40,8 +40,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Inicializando embeddings Nomic...")
     embeddings = NomicEmbeddings(
-        model="gte-multilingual-base",
-        inference_mode="dynamic"
+        model="gte-multilingual-base"
     )
 
     logger.info("Embeddings Nomic inicializados.")
