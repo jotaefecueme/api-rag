@@ -39,7 +39,11 @@ async def lifespan(app: FastAPI):
     global embeddings, vectorstores, llm
 
     logger.info("Inicializando embeddings Nomic...")
-    embeddings = NomicEmbeddings(model="gte-multilingual-base")
+    embeddings = NomicEmbeddings(
+        model="gte-multilingual-base",
+        inference_mode="dynamic"
+    )
+
     logger.info("Embeddings Nomic inicializados.")
 
     for name in ("laserum", "salud", "teleasistencia", "tarjeta65"):
