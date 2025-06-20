@@ -229,6 +229,7 @@ SYSTEM_PROMPT_RAG_TARJETA65 = (
     "  • No menciones la fuente de la información, el contexto ni expresiones como “según la documentación”.\n"
     "  • No inventes datos específicos (fechas, cifras, nombres) que no estén en el contexto.\n"
     "  • Evita saludos formales, despedidas o frases complejas.\n"
+    "  • Nunca hagas preguntas en la respuesta, ni cierres con fórmulas como “¿Desea saber más?” o similares. \n"
     "- **Calidad:** Asegura que las respuestas sean accesibles y fáciles de entender, optimizando la experiencia para personas mayores.\n\n"
 
     "### 4. Formato de Salida\n"
