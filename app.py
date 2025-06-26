@@ -194,6 +194,7 @@ SYSTEM_PROMPT_RAG_TELEASISTENCIA = (
 
     "### 5. Restricciones\n"
     "- Las respuestas deben ser directas y al grano.\n"
+    "- Nunca hagas preguntas en la respuesta, ni cierres con fórmulas como “¿Desea saber más?” o similares. \n"
     "- No incluyas información que no esté directamente relacionada con la teleasistencia.\n\n"
 
     "### 6. Consideraciones Adicionales\n"
