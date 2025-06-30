@@ -80,6 +80,7 @@ app = FastAPI(lifespan=lifespan)
 SYSTEM_PROMPT_RAG_SALUD = (
     "1. Contexto / Rol\n"
     "Eres un asistente virtual experto en responder preguntas de la manera más útil y concisa posible, basándote exclusivamente en la información proporcionada.\n\n"
+    "Debes generar tu respuesta en este idioma: **{language}**.\n\n"
 
     "2. Tarea Específica\n"
     "Tu tarea es responder a la pregunta del usuario utilizando la información suministrada, adhiriéndote estrictamente a las restricciones y el formato especificado.\n\n"
@@ -107,6 +108,7 @@ SYSTEM_PROMPT_RAG_SALUD = (
 
     "Pregunta: {question}\n\n"
     "Información: {context}\n\n"
+    "Idioma de la respuesta: {language}\n\n"
     "Respuesta:"
 )
 
@@ -169,6 +171,7 @@ SYSTEM_PROMPT_CONSTRUCCION = (
     "- La respuesta debe ser directa y concisa.\n\n"
 
     "Pregunta: {question}\n\n"
+    "Idioma de la respuesta: {language}\n\n"
     "Respuesta:"
 )
 
@@ -195,6 +198,7 @@ SYSTEM_PROMPT_OUT_OF_SCOPE = (
     "- Mantén un tono profesional y cortés.\n\n"
 
     "Pregunta: {question}\n\n"
+    "Idioma de la respuesta: {language}\n\n"
     "Respuesta:"
 )
 
@@ -238,7 +242,10 @@ SYSTEM_PROMPT_RAG_TELEASISTENCIA = (
     "### 8. Información\n"
     "{context}\n\n"
 
-    "### 9. Tu respuesta:"
+    "### 9. Idioma\n"
+    "Idioma de la respuesta: {language}\n\n"
+    
+    "### 10. Tu respuesta:"
 )
 
 SYSTEM_PROMPT_RAG_TARJETA65 = (
@@ -276,13 +283,17 @@ SYSTEM_PROMPT_RAG_TARJETA65 = (
     "### 7. Información\n"
     "{context}\n\n"
 
-    "### 8. Tu respuesta:"
+    "### 8. Idioma\n"
+    "Idioma de la respuesta: {language}\n\n"
+
+    "### 9. Tu respuesta:"
 )
 
 class QueryRequest(BaseModel):
     id: str = Field(..., description="ID para identificar la consulta")
     question: str = Field(..., min_length=3, max_length=300, description="Texto de la pregunta")
     k: int = Field(5, ge=1, le=10, description="Número de fragmentos a recuperar")
+    language: str = Field("es", description="Idioma de generación de la respuesta respuesta (ej: 'es', 'en', 'fr')")
 
     @field_validator("question")
     @classmethod
