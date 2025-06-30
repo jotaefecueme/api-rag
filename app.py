@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Embeddings Nomic inicializados.")
 
-    for name in ("laserum", "salud", "teleasistencia", "tarjeta65"):
+    for name in ("laserum", "salud", "enea", "teleasistencia", "tarjeta65"):
         path = f"./chroma_data/{name}"
         if not os.path.exists(path):
             logger.error(f"Vectorstore Chroma para '{name}' no encontrado en disco en {path}")
@@ -110,6 +110,39 @@ SYSTEM_PROMPT_RAG_SALUD = (
     "Respuesta:"
 )
 
+SYSTEM_PROMPT_RAG_ENEA = (
+    "1. Kontekst / Rola\n"
+    "Jesteś wirtualnym asystentem specjalizującym się w udzielaniu odpowiedzi w możliwie najbardziej przydatny i zwięzły sposób, opierając się wyłącznie na dostarczonych informacjach.\n\n"
+
+    "2. Zadanie szczegółowe\n"
+    "Twoim zadaniem jest odpowiedzieć na pytanie użytkownika, korzystając z dostarczonych informacji, ściśle trzymając się ograniczeń i określonego formatu.\n\n"
+
+    "3. Szczegóły i wymagania\n"
+    "- Dokładność i zwięzłość: Odpowiedzi muszą być precyzyjne i nie mogą przekraczać 40 słów.\n"
+    "- Użyteczność: Maksymalizuj przydatność odpowiedzi dla użytkownika, skutecznie wykorzystując dostępne informacje.\n"
+    "- Ograniczenia:\n"
+    "  • Nie wspominaj o źródle informacji ani nie używaj zwrotów typu „zgodnie z dokumentacją”.\n"
+    "  • Nie spekuluj, nie zgaduj ani nie wymyślaj informacji.\n"
+    "  • Nie używaj powitań, pożegnań ani grzecznościowych zwrotów.\n"
+    "  • Jeśli brak wystarczających informacji, odpowiedz dokładnie: „Brak dostępnych informacji, aby odpowiedzieć na to pytanie.”\n"
+    "- Format:\n"
+    "  • Odpowiedź w formie czystego tekstu.\n"
+    "  • Krótkie listy punktowane (maks. 3 elementy).\n"
+    "  • Przeprowadź poprawną walidację danych przed udzieleniem odpowiedzi.\n"
+    "  • Zaimplementuj obsługę błędów w przypadku brakujących informacji.\n\n"
+
+    "4. Format wyjściowy\n"
+    "Czysty tekst, maksymalnie 40 słów, zgodnie z powyższymi ograniczeniami.\n\n"
+
+    "5. Ograniczenia\n"
+    "- Nie dodawaj informacji spoza dostarczonego kontekstu.\n"
+    "- Nie używaj potocznego języka ani nieformalnych wyrażeń.\n\n"
+
+    "Pytanie: {question}\n\n"
+    "Informacja: {context}\n\n"
+    "Odpowiedź:"
+)
+
 
 SYSTEM_PROMPT_CONSTRUCCION = (
     "1. Contexto / Rol\n"
@@ -165,8 +198,6 @@ SYSTEM_PROMPT_OUT_OF_SCOPE = (
     "Respuesta:"
 )
 
-
-
 SYSTEM_PROMPT_RAG_TELEASISTENCIA = (
     "### 1. Contexto / Rol\n"
     "Eres un asistente especializado en teleasistencia, enfocado en brindar respuestas claras y concisas sobre salud, bienestar y cuidados para personas mayores.\n\n"
@@ -210,8 +241,6 @@ SYSTEM_PROMPT_RAG_TELEASISTENCIA = (
     "### 9. Tu respuesta:"
 )
 
-
-
 SYSTEM_PROMPT_RAG_TARJETA65 = (
     "### 1. Contexto / Rol\n"
     "Eres un asistente especializado en la Tarjeta 65 de la Junta de Andalucía, experto en responder preguntas sobre salud, bienestar, cuidados y servicios relacionados con personas mayores.\n\n"
@@ -249,9 +278,6 @@ SYSTEM_PROMPT_RAG_TARJETA65 = (
 
     "### 8. Tu respuesta:"
 )
-
-
-
 
 class QueryRequest(BaseModel):
     id: str = Field(..., description="ID para identificar la consulta")
@@ -313,7 +339,7 @@ async def log_query_to_db(
 
 @app.post("/query")
 async def query(request: QueryRequest, raw_request: Request):
-    valid_ids = {"rag_salud", "rag_laserum", "construccion", "out_of_scope", "rag_teleasistencia", "rag_tarjeta65"}
+    valid_ids = {"rag_salud", "rag_laserum", "rag_enea", "construccion", "out_of_scope", "rag_teleasistencia", "rag_tarjeta65"}
     if request.id not in valid_ids:
         logger.warning(f"ID no permitido recibido: {request.id}")
         raise HTTPException(status_code=400, detail="ID no permitido")
@@ -348,6 +374,9 @@ async def query(request: QueryRequest, raw_request: Request):
 
             elif request.id == "rag_tarjeta65":
                 prompt = SYSTEM_PROMPT_RAG_TARJETA65.format(question=request.question, context=context)
+
+            elif request.id == "rag_enea":
+                prompt = SYSTEM_PROMPT_RAG_ENEA.format(question=request.question, context=context)
 
             else:
                 prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=context)
