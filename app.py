@@ -381,23 +381,23 @@ async def query(request: QueryRequest, raw_request: Request):
                 }
             context = truncate_context("\n\n".join(doc.page_content for doc in docs))
             if request.id == "rag_teleasistencia":
-                prompt = SYSTEM_PROMPT_RAG_TELEASISTENCIA.format(question=request.question, context=context)
+                prompt = SYSTEM_PROMPT_RAG_TELEASISTENCIA.format(question=request.question, context=context, language=language)
 
             elif request.id == "rag_tarjeta65":
-                prompt = SYSTEM_PROMPT_RAG_TARJETA65.format(question=request.question, context=context)
+                prompt = SYSTEM_PROMPT_RAG_TARJETA65.format(question=request.question, context=context, language=language)
 
             elif request.id == "rag_enea":
-                prompt = SYSTEM_PROMPT_RAG_ENEA.format(question=request.question, context=context)
+                prompt = SYSTEM_PROMPT_RAG_ENEA.format(question=request.question, context=context, language=language)
 
             else:
-                prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=context)
+                prompt = SYSTEM_PROMPT_RAG_SALUD.format(question=request.question, context=context, language=language)
 
         elif request.id == "construccion":
-            prompt = SYSTEM_PROMPT_CONSTRUCCION.format(question=request.question)
+            prompt = SYSTEM_PROMPT_CONSTRUCCION.format(question=request.question, language=language)
             logger.info("Respuesta de construcción solicitada.")
 
         elif request.id == "out_of_scope":
-            prompt = SYSTEM_PROMPT_OUT_OF_SCOPE.format(question=request.question)
+            prompt = SYSTEM_PROMPT_OUT_OF_SCOPE.format(question=request.question, language=language)
             logger.info("Respuesta de fuera de alcance solicitada.")
 
         if llm is None:
