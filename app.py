@@ -77,11 +77,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-def render_dialogue_history(history: List[Dict[str, str]]) -> str:
+def render_dialogue_history(history: List[DialogueTurn]) -> str:
     if not history:
-        return "No hay historial. Primer turno."
+        return "No hay historial disponible."
     return "\n".join([
-        f"Usuario: {turn.get('user_input', '')}\nAsistente: {turn.get('system_output', '')}"
+        f"Usuario: {turn.user_input}\nAsistente: {turn.system_output}"
         for turn in history
     ])
 
