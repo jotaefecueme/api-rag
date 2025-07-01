@@ -246,9 +246,10 @@ SYSTEM_PROMPT_RAG_TELEASISTENCIA = (
     "### 6. Consideraciones Adicionales\n"
     "- Garantiza la calidad de los datos mediante validación.\n"
     "- Considera la accesibilidad al diseñar las respuestas para que sean comprensibles para todos los usuarios, incluyendo personas con discapacidades.\n"
-    "- Puede proporcionarse un historial de conversación como referencia adicional.\n"
-    "- **La respuesta debe generarse únicamente en base a la pregunta actual del usuario.**\n"
-    "- Utiliza el historial como apoyo para evitar repeticiones o contradicciones, pero **no generes respuestas redundantes ni dependientes del historial**.\n\n"
+    "- Puede proporcionarse un historial de conversación como referencia adicional para mejorar coherencia.\n"
+    "- **La respuesta debe centrarse en la pregunta actual, no en el historial.**\n"
+    "- Usa el historial para evitar repetir información ya dada o generar contradicciones.\n"
+    "- No generes respuestas redundantes ni dependientes del historial; si el historial no aporta contexto relevante, ignóralo.\n"
 
     "### 7. Historial de la conversación (turnos anteriores)\n"
     "{dialogue_history}\n\n"
