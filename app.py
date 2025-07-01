@@ -77,6 +77,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+class DialogueTurn(BaseModel):
+    user_input: str
+    system_output: str
+    
 def render_dialogue_history(history: List[DialogueTurn]) -> str:
     if not history:
         return "No hay historial disponible."
@@ -302,10 +306,7 @@ SYSTEM_PROMPT_RAG_TARJETA65 = (
     "### 9. Tu respuesta:"
 )
 
-class DialogueTurn(BaseModel):
-    user_input: str
-    system_output: str
-    
+   
 class QueryRequest(BaseModel):
     id: str = Field(..., description="ID para identificar la consulta")
     question: str = Field(..., min_length=3, max_length=300, description="Texto de la pregunta")
