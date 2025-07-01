@@ -187,7 +187,6 @@ SYSTEM_PROMPT_OUT_OF_SCOPE = (
 
     "3. Detalles y Requisitos\n"
     "- La respuesta debe ser breve y directa, evitando detalles innecesarios.\n"
-    "- Utiliza una estructura de frase similar a: \"Lo siento, el [error handling] está fuera de mi alcance.\"\n"
     "- Asegúrate de que el sistema sea robusto para manejar diferentes tipos de preguntas y que provea [error handling] si no puede identificar el tema.\n"
     "- Evita respuestas ambiguas o genéricas que no den una idea clara al usuario de por qué la pregunta no puede ser respondida.\n"
     "- No repitas la pregunta literal del usuario en la respuesta.\n\n"
