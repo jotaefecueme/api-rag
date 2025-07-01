@@ -79,12 +79,11 @@ app = FastAPI(lifespan=lifespan)
 
 def render_dialogue_history(history: List[Dict[str, str]]) -> str:
     if not history:
-        return "No hay historial disponible."
+        return "No hay historial. Primer turno."
     return "\n".join([
-        f"Usuario: {turn['user_input']}\nAsistente: {turn['system_output']}"
+        f"Usuario: {turn.get('user_input', '')}\nAsistente: {turn.get('system_output', '')}"
         for turn in history
     ])
-
 
 SYSTEM_PROMPT_RAG_SALUD = (
     "1. Contexto / Rol\n"
@@ -370,7 +369,6 @@ async def log_query_to_db(
     except Exception as e:
         logger.error(f"Error guardando log en DB: {e}")
         
-dialogue_history_text = render_dialogue_history(request.dialogue_history)
 @app.post("/query")
 async def query(request: QueryRequest, raw_request: Request):
     valid_ids = {"rag_salud", "rag_laserum", "rag_enea", "construccion", "out_of_scope", "rag_teleasistencia", "rag_tarjeta65"}
@@ -380,6 +378,7 @@ async def query(request: QueryRequest, raw_request: Request):
 
     start_time = time.time()
     logger.info(f"Consulta recibida: id={request.id} pregunta='{request.question}' (k={request.k})")
+    dialogue_history_text = render_dialogue_history(request.dialogue_history)
 
     try:
         docs = []
