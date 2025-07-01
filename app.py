@@ -77,6 +77,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+def render_dialogue_history(history: List[Dict[str, str]]) -> str:
+    if not history:
+        return "No hay historial disponible."
+    return "\n".join([
+        f"Usuario: {turn['user_input']}\nAsistente: {turn['system_output']}"
+        for turn in history
+    ])
+
+
 SYSTEM_PROMPT_RAG_SALUD = (
     "1. Contexto / Rol\n"
     "Eres un asistente virtual experto en responder preguntas de la manera más útil y concisa posible, basándote exclusivamente en la información proporcionada.\n\n"
@@ -233,18 +242,24 @@ SYSTEM_PROMPT_RAG_TELEASISTENCIA = (
 
     "### 6. Consideraciones Adicionales\n"
     "- Garantiza la calidad de los datos mediante validación.\n"
-    "- Considera la accesibilidad al diseñar las respuestas para que sean comprensibles para todos los usuarios, incluyendo personas con discapacidades.\n\n"
+    "- Considera la accesibilidad al diseñar las respuestas para que sean comprensibles para todos los usuarios, incluyendo personas con discapacidades.\n"
+    "- Puede proporcionarse un historial de conversación como referencia adicional.\n"
+    "- **La respuesta debe generarse únicamente en base a la pregunta actual del usuario.**\n"
+    "- Utiliza el historial como apoyo para evitar repeticiones o contradicciones, pero **no generes respuestas redundantes ni dependientes del historial**.\n\n"
 
-    "### 7. Pregunta del usuario\n"
+    "### 7. Historial de la conversación (turnos anteriores)\n"
+    "{dialogue_history}\n\n"
+
+    "### 8. Pregunta actual del usuario\n"
     "{question}\n\n"
 
-    "### 8. Información\n"
+    "### 9. Información\n"
     "{context}\n\n"
 
-    "### 9. Idioma\n"
+    "### 10. Idioma\n"
     "Idioma de la respuesta: {language}\n\n"
-    
-    "### 10. Tu respuesta:"
+
+    "### 11. Tu respuesta:"
 )
 
 SYSTEM_PROMPT_RAG_TARJETA65 = (
@@ -288,11 +303,19 @@ SYSTEM_PROMPT_RAG_TARJETA65 = (
     "### 9. Tu respuesta:"
 )
 
+class DialogueTurn(BaseModel):
+    user_input: str
+    system_output: str
+    
 class QueryRequest(BaseModel):
     id: str = Field(..., description="ID para identificar la consulta")
     question: str = Field(..., min_length=3, max_length=300, description="Texto de la pregunta")
     k: int = Field(5, ge=1, le=10, description="Número de fragmentos a recuperar")
     language: str = Field("es", description="Idioma de generación de la respuesta respuesta (ej: 'es', 'en', 'fr')")
+    dialogue_history: Optional[List[DialogueTurn]] = Field(
+        default_factory=list,
+        description="Historial conversacional: pares de entrada y salida anteriores"
+    )
 
     @field_validator("question")
     @classmethod
@@ -346,7 +369,8 @@ async def log_query_to_db(
         logger.debug("Consulta registrada en la base de datos correctamente.")
     except Exception as e:
         logger.error(f"Error guardando log en DB: {e}")
-
+        
+dialogue_history_text = render_dialogue_history(request.dialogue_history)
 @app.post("/query")
 async def query(request: QueryRequest, raw_request: Request):
     valid_ids = {"rag_salud", "rag_laserum", "rag_enea", "construccion", "out_of_scope", "rag_teleasistencia", "rag_tarjeta65"}
@@ -380,7 +404,7 @@ async def query(request: QueryRequest, raw_request: Request):
                 }
             context = truncate_context("\n\n".join(doc.page_content for doc in docs))
             if request.id == "rag_teleasistencia":
-                prompt = SYSTEM_PROMPT_RAG_TELEASISTENCIA.format(question=request.question, context=context, language=request.language)
+                prompt = SYSTEM_PROMPT_RAG_TELEASISTENCIA.format(question=request.question, context=context, language=request.language, dialogue_history=dialogue_history_text)
 
             elif request.id == "rag_tarjeta65":
                 prompt = SYSTEM_PROMPT_RAG_TARJETA65.format(question=request.question, context=context, language=request.language)
